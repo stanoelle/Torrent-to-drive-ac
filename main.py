@@ -48,6 +48,48 @@ def download_files(magnet_urls, save_path):
 
     return [handle.torrent_file().name() for handle in handles]
 
+def create_folder(service, folder_name, parent_id=None):
+
+    file_metadata = {
+
+        'name': folder_name,
+
+        'mimeType': 'application/vnd.google-apps.folder'
+
+    }
+
+    if parent_id:
+
+        file_metadata['parents'] = [parent_id]
+
+    folder = service.files().create(body=file_metadata, fields='id').execute()
+
+    return folder['id']
+
+def upload_file_to_drive(service, file_path, folder_id):
+
+    file_metadata = {
+
+        'name': os.path.basename(file_path),
+
+        'parents': [folder_id]
+
+    }
+
+    media = MediaFileUpload(file_path, resumable=True)
+
+    try:
+
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+        print(f'File ID: "{file.get("id")}".')
+
+    except HttpError as error:
+
+        print(f'An error occurred: {error}')
+
+        file = None
+
 # Upload files to Google Drive
 
 def upload_files(file_paths, folder_id):
@@ -70,63 +112,19 @@ def upload_files(file_paths, folder_id):
 
         if os.path.isdir(file_path):
 
+            new_folder_id = create_folder(service, os.path.basename(file_path), folder_id)
+
             for root, _, files in os.walk(file_path):
 
                 for file in files:
 
                     file_full_path = os.path.join(root, file)
 
-                    file_metadata = {
-
-                        'name': os.path.basename(file_full_path),
-
-                        'parents': [folder_id]
-
-                    }
-
-                    media = MediaFileUpload(file_full_path, resumable=True)
-
-                    try:
-
-                        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
-                        print(f'File ID: "{file.get("id")}".')
-
-                    except HttpError as error:
-
-                        print(f'An error occurred: {error}')
-
-                        file = None
+                    upload_file_to_drive(service, file_full_path, new_folder_id)
 
         else:
 
-            print(f'Skipping non-directory path: {file_path}')
-
-    # Upload files
-
-    for file_path in file_paths:
-
-        file_metadata = {
-
-            'name': os.path.basename(file_path),
-
-            'parents': [folder_id]
-
-        }
-
-        media = MediaFileUpload(file_path, resumable=True)
-
-        try:
-
-            file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
-            print(f'File ID: "{file.get("id")}".')
-
-        except HttpError as error:
-
-            print(f'An error occurred: {error}')
-
-            file = None
+            upload_file_to_drive(service, file_path, folder_id)
 
 if __name__ == '__main__':
 
