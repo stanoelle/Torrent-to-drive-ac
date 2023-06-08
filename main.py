@@ -1,89 +1,54 @@
-import libtorrent as lt
 import os
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
 
-magnet_url = input("Enter Magnet URL: ").strip()
-save_path = 'C:/Downloads/'  
+def upload_files(file_paths, folder_id):
 
-# Download torrent file using libtorrent
-ses = lt.session()
-params = {
+    # Set up Google Drive API client
 
-    'save_path': save_path,
+    SCOPES = ['https://www.googleapis.com/auth/drive']
 
-    'storage_mode': lt.storage_mode_t(2),
+    SERVICE_ACCOUNT_FILE = 'serviceaccount.json'
 
-}
+    credentials = service_account.Credentials.from_service_account_file(
 
-handle = lt.add_magnet_uri(ses, magnet_url, params)
-ses.start_dht()
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 
-print("Downloading metadata...")
-while not handle.has_metadata():
+    service = build('drive', 'v3', credentials=credentials, static_discovery=False)
 
-    pass
+    # Upload files
 
-print("Starting download...")
+    for file_path in file_paths:
 
-while handle.status().state != lt.torrent_status.seeding:
+        if os.path.isdir(file_path):
 
-    s = handle.status()
+            for root, _, files in os.walk(file_path):
 
-    print('%.2f%% complete (down: %.1f kb/s up: %.1f kB/s peers: %d) %s' % (
+                for file in files:
 
-        s.progress * 100, s.download_rate / 1000, s.upload_rate / 1000, s.num_peers, s.state))
+                    file_full_path = os.path.join(root, file)
 
-    if s.is_seeding:
+                    file_metadata = {
 
-        break
+                        'name': os.path.basename(file_full_path),
 
-# Authenticate with Google Drive using PyDrive
+                        'parents': [folder_id]
 
-gauth = GoogleAuth()
-drive = GoogleDrive(gauth)
-folder_name = 'Movies'
-existing_folders = drive.ListFile({'q': "title='" + folder_name + "' and mimeType='application/vnd.google-apps.folder' and trashed=false"}).GetList()
+                    }
 
-if len(existing_folders) > 0:
+                    media = MediaFileUpload(file_full_path, resumable=True)
 
-    folder = existing_folders[0]
+                    try:
 
-    folder_id = folder['id']
+                        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
 
-else:
+                        print(f'File ID: "{file.get("id")}".')
 
-    # Create the folder in Google Drive
+                    except HttpError as error:
 
-    folder_metadata = {'title': folder_name, 'mimeType': 'application/vnd.google-apps.folder'}
+                        print(f'An error occurred: {error}')
 
-    folder = drive.CreateFile(folder_metadata)
+                        file = None
 
-    folder.Upload()
+        else:
 
-    folder_id = folder['id']
+            print(f'Skipping non-directory path: {file_path}')
 
-files = os.listdir(save_path)
-# Upload each file to Google Drive
-
-for file_name in files:
-
-    file_path = os.path.join(save_path, file_name).replace('/', '\\')  
-
-    # Create a file in Google Drive and set its properties
-
-    file_drive = drive.CreateFile({
-
-        'title': file_name,
-
-        'parents': [{'id': folder_id}]
-
-    })
-
-    file_drive.SetContentFile(file_path)
-
-    file_drive.Upload()
-
-    print(f"File '{file_name}' has been uploaded to Google Drive.")
-
-print("All files have been uploaded to Google Drive.")
